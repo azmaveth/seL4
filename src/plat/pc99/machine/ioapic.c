@@ -33,8 +33,12 @@
 
 #define IOREDTBL_HIGH_RESERVED_BITS 24
 
-/* Cache what we believe is in the low word of the IOREDTBL. This
- * has all the state of trigger modes etc etc */
+/*
+ * Cache what we believe is in the low word of the IOREDTBL. This
+ * has all the state of trigger modes etc etc.
+ * IOAPIC_IRQ_LINES is the upper bound on the number of lines
+ * per IOAPIC.
+ */
 static uint32_t ioredtbl_state[IOAPIC_IRQ_LINES * MAX(1, CONFIG_MAX_NUM_IOAPIC)];
 /*
  * The number of IRQ lines for each IOAPIC
@@ -67,7 +71,12 @@ static void single_ioapic_init(word_t ioapic, cpu_id_t delivery_cpu)
      * All current implementations have 24 or fewer lines
      * Protect against the future one that may have more
      */
-    assert(nirqs <= IOAPIC_IRQ_LINES);
+    if (nirqs > IOAPIC_IRQ_LINES) {
+        userError("%s: ioapic %lu has %u IRQs,\n"
+                  "which is greater than the max handled (%u)\n",
+                  __func__, ioapic, nirqs, IOAPIC_IRQ_LINES);
+        halt();
+    }
 
     /* Mask all the IRQs. In doing so we happen to set
      * the vector to 0, which we can assert against in
@@ -138,7 +147,7 @@ exception_t ioapic_decode_map_pin_to_vector(word_t ioapic, word_t pin, word_t le
         userError("Invalid IOAPIC pin %ld, there are %d pins", (long)pin, ioapic_nirqs[ioapic]);
         current_syscall_error.type = seL4_RangeError;
         current_syscall_error.rangeErrorMin = 0;
-        current_syscall_error.rangeErrorMax = IOAPIC_IRQ_LINES - 1;
+        current_syscall_error.rangeErrorMax = ioapic_nirqs[ioapic] + 1;
         return EXCEPTION_SYSCALL_ERROR;
     }
 
